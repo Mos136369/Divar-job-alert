@@ -1,0 +1,16 @@
+name: Divar Job Alert
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test workflow
+        run: |
+          echo "Divar Job Alert is running"
+          date
