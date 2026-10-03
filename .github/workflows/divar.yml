@@ -1,6 +1,8 @@
 name: Divar Job Alert
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "*/30 * * * *"
@@ -20,4 +22,3 @@ jobs:
             --data-urlencode text="✅ اتصال GitHub به ربات تلگرام برقرار شد.")
 
           echo "$RESPONSE"
-
