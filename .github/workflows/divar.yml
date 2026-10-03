@@ -8,17 +8,44 @@ on:
     - cron: "*/30 * * * *"
 
 jobs:
-  test-telegram:
+  test-divar:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Telegram test
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      - name: Test Divar API
         run: |
-          RESPONSE=$(curl -sS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="110744941" \
-            --data-urlencode text="✅ اتصال GitHub به ربات تلگرام برقرار شد.")
+          python - <<'PY'
+          import requests
 
-          echo "$RESPONSE"
+          url = "https://api.divar.ir/v8/postlist/w/search"
+
+          payload = {
+              "city_ids": ["1"],
+              "search_data": {
+                  "form_data": {
+                      "data": {}
+                  }
+              },
+              "pagination_data": {
+                  "@type": "type.googleapis.com/post_list.PaginationData",
+                  "page": 1
+              }
+          }
+
+          headers = {
+              "User-Agent": "Mozilla/5.0",
+              "Content-Type": "application/json",
+              "Origin": "https://divar.ir",
+              "Referer": "https://divar.ir/"
+          }
+
+          r = requests.post(
+              url,
+              json=payload,
+              headers=headers,
+              timeout=30
+          )
+
+          print("STATUS:", r.status_code)
+          print(r.text[:5000])
+          PY
