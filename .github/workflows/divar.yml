@@ -17,6 +17,6 @@ jobs:
           RESPONSE=$(curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="110744941" \
-            --data-urlencode text="✅ اتصال GitHub به تلگرام برقرار شد.")
-          
+            --data-urlencode text="✅ اتصال GitHub به ربات تلگرام برقرار شد.")
+
           echo "$RESPONSE"
