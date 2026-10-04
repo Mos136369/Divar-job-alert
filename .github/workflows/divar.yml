@@ -28,7 +28,6 @@ jobs:
           import json
           import os
           import re
-          import subprocess
           import requests
 
           API = "https://api.divar.ir/v8/postlist/w/search"
@@ -36,25 +35,72 @@ jobs:
           # تهران + شیراز
           CITIES = ["1", "5"]
 
-          # کلمات موردنظر
+          # حوزه‌های موردنظر
           KEYWORDS = [
               "excel", "اکسل",
               "vba",
-              "power query",
-              "powerquery",
+              "power query", "powerquery",
               "power bi", "powerbi",
               "python", "پایتون",
               "automation", "اتوماسیون",
               "rpa",
-              "ai", "هوش مصنوعی",
-              "data analyst", "data analysis",
+              "artificial intelligence",
+              "ai",
+              "هوش مصنوعی",
+              "data analyst",
+              "data analysis",
               "تحلیل داده",
               "داده",
-              "برنامه نویسی", "برنامه‌نویسی",
+              "برنامه نویسی",
+              "برنامه‌نویسی",
+          ]
+
+          # نشانه‌های استخدام واقعی
+          EMPLOYMENT_CUES = [
+              "استخدام",
+              "استخدامی",
+              "نیازمند",
+              "نیاز به نیرو",
+              "نیروی",
+              "جذب نیرو",
+              "جذب",
+              "دعوت به همکاری",
+              "همکاری با",
+              "همکار",
+              "کارشناس",
+              "کارمند",
+              "اپراتور",
+              "متخصص",
+              "برنامه نویس",
+              "برنامه‌نویس",
+              "تحلیلگر",
+              "تحلیل‌گر",
+              "مدیر",
+              "ادمین",
+              "کارآموز",
+              "intern",
+              "hiring",
+              "recruitment",
+          ]
+
+          # مواردی که معمولاً استخدام نیستند
+          EXCLUDE_CUES = [
+              "شراکت",
+              "سرمایه گذاری",
+              "سرمایه‌گذاری",
+              "فروش خدمات",
+              "فروش دوره",
+              "دوره آموزشی",
+              "دوره آموزش",
+              "آموزشگاه",
+              "ثبت نام دوره",
+              "نمایندگی",
+              "تبلیغات",
+              "خدمات فریلنسری",
           ]
 
           STATE_FILE = "seen_ads.json"
-          MAX_PAGES = 3
+          MAX_PAGES = 5
           MAX_FIRST_ALERTS = 10
 
           headers = {
@@ -72,11 +118,50 @@ jobs:
 
           def matches(text):
               text = normalize(text)
-              return any(normalize(k) in text for k in KEYWORDS)
+
+              # حداقل یک کلید فنی باید وجود داشته باشد
+              technical_hit = False
+
+              for keyword in KEYWORDS:
+                  keyword = normalize(keyword)
+
+                  # جلوگیری از اینکه کلمه ai داخل کلمات دیگر
+                  # به اشتباه match شود
+                  if keyword == "ai":
+                      if re.search(r"(?<![a-z])ai(?![a-z])", text):
+                          technical_hit = True
+                          break
+                  elif keyword in text:
+                      technical_hit = True
+                      break
+
+              if not technical_hit:
+                  return False
+
+              has_employment = any(
+                  normalize(keyword) in text
+                  for keyword in EMPLOYMENT_CUES
+              )
+
+              has_exclusion = any(
+                  normalize(keyword) in text
+                  for keyword in EXCLUDE_CUES
+              )
+
+              # باید نشانه استخدام وجود داشته باشد
+              if not has_employment:
+                  return False
+
+              # موارد غیر استخدامی حذف شوند
+              if has_exclusion:
+                  return False
+
+              return True
 
           def load_seen():
               if not os.path.exists(STATE_FILE):
                   return set()
+
               try:
                   with open(STATE_FILE, "r", encoding="utf-8") as f:
                       return set(json.load(f))
@@ -85,10 +170,19 @@ jobs:
 
           def save_seen(seen):
               with open(STATE_FILE, "w", encoding="utf-8") as f:
-                  json.dump(sorted(seen), f, ensure_ascii=False, indent=2)
+                  json.dump(
+                      sorted(seen),
+                      f,
+                      ensure_ascii=False,
+                      indent=2
+                  )
 
           def telegram(message):
-              url = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage"
+              url = (
+                  f"https://api.telegram.org/bot"
+                  f"{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage"
+              )
+
               r = requests.post(
                   url,
                   data={
@@ -98,6 +192,7 @@ jobs:
                   },
                   timeout=30
               )
+
               r.raise_for_status()
 
           def search_city(city):
@@ -109,6 +204,7 @@ jobs:
               found = []
 
               for _ in range(MAX_PAGES):
+
                   payload = {
                       "city_ids": [city],
                       "pagination_data": pagination,
@@ -116,29 +212,45 @@ jobs:
                           "form_data": {
                               "data": {
                                   "category": {
-                                      "str": {"value": "jobs"}
+                                      "str": {
+                                          "value": "jobs"
+                                      }
                                   }
                               }
                           }
                       }
                   }
 
-                  r = requests.post(API, json=payload, headers=headers, timeout=30)
+                  r = requests.post(
+                      API,
+                      json=payload,
+                      headers=headers,
+                      timeout=30
+                  )
+
                   r.raise_for_status()
+
                   data = r.json()
 
                   for widget in data.get("list_widgets", []):
+
                       if widget.get("widget_type") != "POST_ROW":
                           continue
 
                       d = widget.get("data", {})
-                      action = d.get("action", {}).get("payload", {})
+
+                      action = (
+                          d.get("action", {})
+                           .get("payload", {})
+                      )
+
                       token = action.get("token")
 
                       if not token:
                           continue
 
                       title = d.get("title", "")
+
                       text_parts = [
                           title,
                           d.get("middle_description_text", ""),
@@ -146,26 +258,40 @@ jobs:
                           d.get("description", "")
                       ]
 
-                      combined = " ".join(str(x) for x in text_parts)
+                      combined = " ".join(
+                          str(x)
+                          for x in text_parts
+                      )
 
                       if not matches(combined):
                           continue
 
-                      web_info = action.get("web_info", {})
+                      web_info = action.get(
+                          "web_info",
+                          {}
+                      )
 
                       found.append({
                           "token": token,
                           "title": title,
-                          "city": web_info.get("city_persian", ""),
-                          "district": web_info.get("district_persian", ""),
+                          "city": web_info.get(
+                              "city_persian",
+                              ""
+                          ),
+                          "district": web_info.get(
+                              "district_persian",
+                              ""
+                          ),
                           "url": f"https://divar.ir/v/{token}"
                       })
 
                   p = data.get("pagination", {})
+
                   if not p.get("has_next_page"):
                       break
 
                   next_data = p.get("data")
+
                   if not next_data:
                       break
 
@@ -174,30 +300,54 @@ jobs:
               return found
 
           seen = load_seen()
+
           all_ads = {}
 
           for city in CITIES:
+
               try:
                   for ad in search_city(city):
                       all_ads[ad["token"]] = ad
+
               except Exception as e:
-                  print(f"City {city} error: {e}")
+                  print(
+                      f"City {city} error: {e}"
+                  )
 
-          print("Matching ads:", len(all_ads))
+          print(
+              "Matching ads:",
+              len(all_ads)
+          )
 
-          new_ads = [ad for token, ad in all_ads.items() if token not in seen]
+          new_ads = [
+              ad
+              for token, ad in all_ads.items()
+              if token not in seen
+          ]
 
-          # بار اول: فقط 10 مورد آخر ارسال شود تا تلگرام بمباران نشود
-          first_run = not os.path.exists(STATE_FILE)
+          # بار اول فقط 10 آگهی ارسال شود
+          first_run = not os.path.exists(
+              STATE_FILE
+          )
 
           if first_run:
-              send_ads = new_ads[:MAX_FIRST_ALERTS]
+              send_ads = new_ads[
+                  :MAX_FIRST_ALERTS
+              ]
           else:
               send_ads = new_ads
 
+          successfully_sent = set()
+
           for ad in send_ads:
+
               location = " - ".join(
-                  x for x in [ad["city"], ad["district"]] if x
+                  x
+                  for x in [
+                      ad["city"],
+                      ad["district"]
+                  ]
+                  if x
               )
 
               message = (
@@ -209,17 +359,45 @@ jobs:
 
               try:
                   telegram(message)
-                  print("Sent:", ad["token"])
-              except Exception as e:
-                  print("Telegram error:", e)
 
-          # همه آگهی‌های دیده‌شده ثبت می‌شوند تا تکراری ارسال نشوند
-          seen.update(all_ads.keys())
+                  successfully_sent.add(
+                      ad["token"]
+                  )
+
+                  print(
+                      "Sent:",
+                      ad["token"]
+                  )
+
+              except Exception as e:
+
+                  print(
+                      "Telegram error:",
+                      e
+                  )
+
+          # فقط آگهی‌هایی که با موفقیت ارسال شده‌اند
+          # به عنوان دیده‌شده ثبت شوند.
+          seen.update(
+              successfully_sent
+          )
+
           save_seen(seen)
 
-          print("Seen ads:", len(seen))
-          print("New ads:", len(new_ads))
-          print("Sent:", len(send_ads))
+          print(
+              "Seen ads:",
+              len(seen)
+          )
+
+          print(
+              "New ads:",
+              len(new_ads)
+          )
+
+          print(
+              "Sent:",
+              len(successfully_sent)
+          )
           PY
 
       - name: Save seen ads
